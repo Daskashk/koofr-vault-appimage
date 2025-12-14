@@ -9,121 +9,91 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout repository
+    - name: Checkout this repo
       uses: actions/checkout@v4
-    
-    - name: Clone Koofr Vault repository
+
+    - name: Clone Koofr Vault repo
       uses: actions/checkout@v4
       with:
         repository: koofr/vault
         path: vault-source
         submodules: recursive
-    
-    - name: Build with Docker and extract files
+
+    - name: Build Docker image
       run: |
         cd vault-source
         docker build -t vault-builder .
-        
-        # Create a container to inspect and copy files from
-        docker create --name vault-container vault-builder
-        
-        # Check what's in the container
-        echo "=== Container root directory ==="
-        docker run --rm vault-builder ls -la /
-        echo "=== App directory ==="
-        docker run --rm vault-builder ls -la /app/
-        echo "=== Find all dist directories ==="
-        docker run --rm vault-builder find /app -name "dist" -type d
-        
-        # Create directories for our files
-        mkdir -p ../AppDir/bin ../AppDir/web
-        
-        # Try to copy the web files from different possible locations
-        docker cp vault-container:/app/dist/. ../AppDir/web/ 2>/dev/null || \
-        docker cp vault-container:/app/vault-web/dist/. ../AppDir/web/ 2>/dev/null || \
-        echo "Could not copy web files"
-        
-        # Check if we got the files
-        echo "=== Files copied to AppDir/web ==="
-        ls -la ../AppDir/web/
-        
-        # Clean up
-        docker rm vault-container
-    
+
+    - name: Extract built UI
+      run: |
+        # container for extraction
+        docker create --name vault_tmp vault-builder
+        mkdir -p AppDir/web
+        docker cp vault_tmp:/app/dist/. AppDir/web/
+        ls -la AppDir/web   # verifica que haya archivos
+        docker rm vault_tmp
+
     - name: Install appimage-builder
+      run: pip install appimage-builder
+
+    - name: Assemble AppImage
       run: |
-        pip install appimage-builder
-    
-    - name: Build AppImage
-      run: |
-        # Create AppDir structure
-        mkdir -p AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
-        
-        # Create a simple script to run the web app
-        cat > AppDir/bin/vault << 'SCRIPT'
-        #!/bin/bash
-        HERE="$(dirname "$(readlink -f "${0}")")"
+        mkdir -p AppDir/usr/share/applications \
+                 AppDir/usr/share/icons/hicolor/256x256/apps
+
+        # launcher script (lanza Python http server)
+        cat > AppDir/bin/vault <<'SCRIPT'
+        #!/usr/bin/env bash
+        HERE="$(dirname "$(readlink -f "$0")")"
         export VAULT_WEB_PATH="${HERE}/../web"
-        
-        # Find a web server
-        if command -v python3 >/dev/null 2>&1; then
-            echo "Starting web server with python3..."
-            cd "$VAULT_WEB_PATH"
-            python3 -m http.server 8080 --bind 127.0.0.1 &
-            SERVER_PID=$!
-            sleep 2
-            xdg-open "http://127.0.0.1:8080" 2>/dev/null || sensible-browser "http://127.0.0.1:8080" 2>/dev/null || echo "Please open http://127.0.0.1:8080 in your browser"
-            wait $SERVER_PID
-        elif command -v python >/dev/null 2>&1; then
-            echo "Starting web server with python..."
-            cd "$VAULT_WEB_PATH"
-            python -m SimpleHTTPServer 8080 &
-            SERVER_PID=$!
-            sleep 2
-            xdg-open "http://127.0.0.1:8080" 2>/dev/null || sensible-browser "http://127.0.0.1:8080" 2>/dev/null || echo "Please open http://127.0.0.1:8080 in your browser"
-            wait $SERVER_PID
+        if command -v python3 >/dev/null; then
+          cd "$VAULT_WEB_PATH"
+          python3 -m http.server 8080 --bind 127.0.0.1 &
+          SERVER=$!
+          xdg-open "http://127.0.0.1:8080" || echo "Open http://127.0.0.1:8080"
+          wait $SERVER
         else
-            echo "No Python found. Please open the web files manually at: $VAULT_WEB_PATH"
-            exit 1
+          echo "Python3 not found"
+          exit 1
         fi
         SCRIPT
         chmod +x AppDir/bin/vault
-        
-        # Create desktop file
-        cat > AppDir/usr/share/applications/net.koofr.vault.desktop << 'DESKTOP'
+
+        # desktop entry
+        cat > AppDir/usr/share/applications/net.koofr.vault.desktop <<'DESKTOP'
         [Desktop Entry]
         Type=Application
         Name=Koofr Vault
-        Comment=Client-side encrypted folder for your Koofr cloud storage
+        Comment=Client‑side encrypted folder for Koofr
         Exec=bin/vault
         Icon=net.koofr.vault
-        Categories=Office;Utility;
+        Categories=Utility;
         DESKTOP
-        
-        # Create AppRun
-        cat > AppDir/AppRun << 'APPRUN'
+
+        # AppRun (wrapper)
+        cat > AppDir/AppRun <<'APPRUN'
         #!/bin/sh
-        HERE="$(dirname "$(readlink -f "${0}")")"
-        export LD_LIBRARY_PATH="${HERE}/usr/lib:${HERE}/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}"
-        export PATH="${HERE}/usr/bin:${PATH}"
+        HERE="$(dirname "$(readlink -f "$0")")"
         exec "${HERE}/bin/vault" "$@"
         APPRUN
         chmod +x AppDir/AppRun
-        
-        # Download icon
-        wget -O AppDir/usr/share/icons/hicolor/256x256/apps/net.koofr.vault.png https://raw.githubusercontent.com/koofr/vault/main/vault-web/public/icon.png
-        
-        # Build AppImage
+
+        # icon (fallback if missing)
+        wget -O AppDir/usr/share/icons/hicolor/256x256/apps/net.koofr.vault.png \
+          https://raw.githubusercontent.com/koofr/vault/main/vault-web/public/favicon.ico \
+          || echo "Icon not found – using placeholder"
+
+        # build AppImage
         appimage-builder --recipe AppImageBuilder.yml
-    
+
     - name: Upload AppImage
       uses: actions/upload-artifact@v4
       with:
         name: Koofr-Vault-AppImage
         path: '*.AppImage*'
-    
+
     - name: Release
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/')
