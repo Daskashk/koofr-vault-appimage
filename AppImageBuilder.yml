@@ -1,45 +1,76 @@
-version: 1
-AppDir: 
-  path: AppDir
-  app_info:
-    id: net.koofr.vault
-    name: Koofr Vault
-    icon: net.koofr.vault
-    version: latest
-    exec: bin/vault
-    exec_args: $@
+name: Build and Release Koofr Vault AppImage
 
-  directories:
-    - name:  usr
-      rules:
-        - exclude: [stat]
-        - exclude: [ldd]
+on:
+  push:
+    tags: 'v*'
+  workflow_dispatch:
 
-  files:
-    exclude:
-      - usr/share/man
-      - usr/share/doc
-      - usr/share/locale
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      attestations: write
+      id-token: write
 
-  apt:
-    arch: amd64
-    sources:
-      - sourceline: 'deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ jammy main universe'
-        key_url: 'http://keyserver.ubuntu.com/pks/lookup?op=get&search=0x3b4fe6acc0b21f32'
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-    packages:
-      - python3-minimal
-      - python3-stdlib-extensions
-      - ca-certificates
-      - xdg-utils
+      - name: Build AppImage
+        uses: AppImageCrafters/AppImage-CI@v2
+        with:
+          recipe: |
+            version: 1
+            AppDir:
+              path: AppDir
+              app_info:
+                id: net.koofr.vault
+                name: Koofr Vault
+                icon: net.koofr.vault
+                version: latest
+                exec: bin/vault
+                exec_args: $@
+              apt:
+                arch: amd64
+                sources:
+                  - sourceline: 'deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ jammy main universe'
+                    key_url: 'http://keyserver.ubuntu.com/pks/lookup?op=get&search=0x3b4fe6acc0b21f32'
+                packages:
+                  - python3-minimal
+                  - python3-stdlib-extensions
+                  - ca-certificates
+                  - xdg-utils
+          app_name: Koofr-Vault
 
-  runtime:
-    preserve: 
-      - etc/ssl/certs/ca-certificates. crt
-      - usr/lib/python3*/dist-packages
-      - usr/bin/python3*
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: 'Koofr-Vault-*.AppImage'
+          subject-path: './Koofr-Vault-*.AppImage'
 
-AppImage:
-  update-information: 'gh-releases-zsync|Daskashk|koofr-vault-appimage|latest|Koofr-Vault-*.AppImage.zsync'
-  sign-key: null
-  arch: x86_64
+      - name: Upload AppImage Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Koofr-Vault-AppImage
+          path: ./Koofr-Vault-*.AppImage
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      attestations: write
+
+    steps:
+      - name: Download AppImage Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Koofr-Vault-AppImage
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: Koofr-Vault-*.AppImage
+          generate_release_notes: true
