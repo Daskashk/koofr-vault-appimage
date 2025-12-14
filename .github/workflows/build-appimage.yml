@@ -28,9 +28,9 @@ jobs:
         
         # Check what's in the container
         echo "=== Container contents ==="
-        docker run --rm vault-builder find /app -name "vault" -type f
-        echo "=== Target directory ==="
-        docker run --rm vault-builder ls -la /app/target/ 2>/dev/null || echo "No target directory"
+        docker run --rm vault-builder find /app -name "dist" -type d
+        echo "=== Web dist directory ==="
+        docker run --rm vault-builder ls -la /app/vault-web/dist/ 2>/dev/null || echo "No vault-web/dist directory"
         echo "=== App directory ==="
         docker run --rm vault-builder ls -la /app/
     
@@ -43,8 +43,8 @@ jobs:
         # Create AppDir structure
         mkdir -p AppDir/bin AppDir/web AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
         
-        # Copy web files
-        docker run --rm -v $(pwd)/AppDir/web:/output vault-builder cp -r /app/dist/* /output/
+        # Copy web files from the correct location
+        docker run --rm -v $(pwd)/AppDir/web:/output vault-builder cp -r /app/vault-web/dist/* /output/
         
         # Create a simple script to run the web app
         cat > AppDir/bin/vault << 'SCRIPT'
