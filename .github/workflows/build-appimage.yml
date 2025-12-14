@@ -13,7 +13,12 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+    
+    - name: Clone Koofr Vault repository
+      uses: actions/checkout@v4
       with:
+        repository: koofr/vault
+        path: vault-source
         submodules: recursive
     
     - name: Install Rust
@@ -32,17 +37,18 @@ jobs:
         path: |
           ~/.cargo/registry
           ~/.cargo/git
-          target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          vault-source/target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('vault-source/**/Cargo.lock') }}
     
     - name: Build web app
       run: |
-        cd vault-web
+        cd vault-source/vault-web
         npm install
         npm run build
     
     - name: Build native binary
       run: |
+        cd vault-source
         cargo build --release
     
     - name: Install appimage-builder
@@ -55,11 +61,11 @@ jobs:
         mkdir -p AppDir/bin AppDir/web AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
         
         # Copy binary
-        cp target/release/vault AppDir/bin/
+        cp vault-source/target/release/vault AppDir/bin/
         chmod +x AppDir/bin/vault
         
         # Copy web files
-        cp -r vault-web/dist/* AppDir/web/
+        cp -r vault-source/vault-web/dist/* AppDir/web/
         
         # Create desktop file
         cat > AppDir/usr/share/applications/net.koofr.vault.desktop << 'DESKTOP'
