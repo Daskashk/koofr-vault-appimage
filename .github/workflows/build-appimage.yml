@@ -25,20 +25,20 @@ jobs:
       uses: actions-rs/toolchain@v1
       with:
         toolchain: stable
+        target: wasm32-wasi
     
     - name: Install Node.js
       uses: actions/setup-node@v4
       with:
         node-version: '18'
     
-    - name: Cache cargo
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          vault-source/target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('vault-source/**/Cargo.lock') }}
+    - name: Install wasm-pack
+      run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+    
+    - name: Build vault-wasm
+      run: |
+        cd vault-source/vault-wasm
+        wasm-pack build --target bundler --out-dir ../vault-web/src/vault-wasm
     
     - name: Build web app
       run: |
