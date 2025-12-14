@@ -1,8 +1,6 @@
 version: 1
-
-AppDir:
-  path: ./AppDir
-  
+AppDir: 
+  path: AppDir
   app_info:
     id: net.koofr.vault
     name: Koofr Vault
@@ -10,18 +8,38 @@ AppDir:
     version: latest
     exec: bin/vault
     exec_args: $@
-  
+
+  directories:
+    - name:  usr
+      rules:
+        - exclude: [stat]
+        - exclude: [ldd]
+
   files:
-    include:
-    - target/release/vault
-    - vault-web/dist/**
-    - vault-web/public/**
-    
+    exclude:
+      - usr/share/man
+      - usr/share/doc
+      - usr/share/locale
+
+  apt:
+    arch: amd64
+    sources:
+      - sourceline: 'deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ jammy main universe'
+        key_url: 'http://keyserver.ubuntu.com/pks/lookup?op=get&search=0x3b4fe6acc0b21f32'
+
+    packages:
+      - python3-minimal
+      - python3-stdlib-extensions
+      - ca-certificates
+      - xdg-utils
+
   runtime:
-    env:
-      VAULT_WEB_PATH: $APPDIR/web
-    
+    preserve: 
+      - etc/ssl/certs/ca-certificates. crt
+      - usr/lib/python3*/dist-packages
+      - usr/bin/python3*
+
 AppImage:
+  update-information: 'gh-releases-zsync|Daskashk|koofr-vault-appimage|latest|Koofr-Vault-*.AppImage.zsync'
+  sign-key: null
   arch: x86_64
-  update-information: gh-releases-zsync|Daskashk|koofr-vault-appimage|latest|*.AppImage.zsync
-  sign-key: None
