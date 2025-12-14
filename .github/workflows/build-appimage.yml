@@ -21,18 +21,36 @@ jobs:
         path: vault-source
         submodules: recursive
     
-    - name: Build with Docker
+    - name: Build with Docker and extract files
       run: |
         cd vault-source
         docker build -t vault-builder .
         
+        # Create a container to inspect and copy files from
+        docker create --name vault-container vault-builder
+        
         # Check what's in the container
-        echo "=== Container contents ==="
-        docker run --rm vault-builder find /app -name "dist" -type d
-        echo "=== Web dist directory ==="
-        docker run --rm vault-builder ls -la /app/vault-web/dist/ 2>/dev/null || echo "No vault-web/dist directory"
+        echo "=== Container root directory ==="
+        docker run --rm vault-builder ls -la /
         echo "=== App directory ==="
         docker run --rm vault-builder ls -la /app/
+        echo "=== Find all dist directories ==="
+        docker run --rm vault-builder find /app -name "dist" -type d
+        
+        # Create directories for our files
+        mkdir -p ../AppDir/bin ../AppDir/web
+        
+        # Try to copy the web files from different possible locations
+        docker cp vault-container:/app/dist/. ../AppDir/web/ 2>/dev/null || \
+        docker cp vault-container:/app/vault-web/dist/. ../AppDir/web/ 2>/dev/null || \
+        echo "Could not copy web files"
+        
+        # Check if we got the files
+        echo "=== Files copied to AppDir/web ==="
+        ls -la ../AppDir/web/
+        
+        # Clean up
+        docker rm vault-container
     
     - name: Install appimage-builder
       run: |
@@ -41,10 +59,7 @@ jobs:
     - name: Build AppImage
       run: |
         # Create AppDir structure
-        mkdir -p AppDir/bin AppDir/web AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
-        
-        # Copy web files from the correct location
-        docker run --rm -v $(pwd)/AppDir/web:/output vault-builder cp -r /app/vault-web/dist/* /output/
+        mkdir -p AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
         
         # Create a simple script to run the web app
         cat > AppDir/bin/vault << 'SCRIPT'
