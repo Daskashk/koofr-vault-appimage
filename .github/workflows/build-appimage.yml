@@ -3,7 +3,7 @@ name: Build AppImage
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*'          # v0.1.20-1, v0.1.20-2, …
   workflow_dispatch:
 
 jobs:
@@ -11,83 +11,116 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    # ------------------------------------------------------------------
+    # 1️⃣ Checkout y clonación del proyecto Koofr Vault
+    # ------------------------------------------------------------------
     - name: Checkout this repo
       uses: actions/checkout@v4
 
-    - name: Clone Koofr Vault repo
+    - name: Clone Koofr Vault repository
       uses: actions/checkout@v4
       with:
         repository: koofr/vault
         path: vault-source
         submodules: recursive
 
+    # ------------------------------------------------------------------
+    # 2️⃣ Construcción de la imagen Docker oficial
+    # ------------------------------------------------------------------
     - name: Build Docker image
       run: |
         cd vault-source
         docker build -t vault-builder .
 
-    - name: Extract built UI
+    # ------------------------------------------------------------------
+    # 3️⃣ Extracción de la UI compilada ( /app/dist )
+    # ------------------------------------------------------------------
+    - name: Extract UI from container
       run: |
-        # container for extraction
+        # create a temporary container for copying files
         docker create --name vault_tmp vault-builder
-        mkdir -p AppDir/web
-        docker cp vault_tmp:/app/dist/. AppDir/web/
-        ls -la AppDir/web   # verifica que haya archivos
+
+        # ensure target directories exist
+        mkdir -p AppDir/bin AppDir/web
+
+        # copy UI (may be /app/dist or /app/vault-web/dist)
+        docker cp vault_tmp:/app/dist/. AppDir/web/ 2>/dev/null ||
+        docker cp vault_tmp:/app/vault-web/dist/. AppDir/web/ 2>/dev/null ||
+        { echo "❌ UI not found in container"; exit 1; }
+
+        # list a few files to verify
+        echo "✅ UI files copied:"
+        ls -1 AppDir/web | head
+
+        # clean up container
         docker rm vault_tmp
 
+    # ------------------------------------------------------------------
+    # 4️⃣ Instalar appimage‑builder (FOSS)
+    # ------------------------------------------------------------------
     - name: Install appimage-builder
       run: pip install appimage-builder
 
+    # ------------------------------------------------------------------
+    # 5️⃣ Montar la estructura AppDir y crear el lanzador
+    # ------------------------------------------------------------------
     - name: Assemble AppImage
       run: |
+        # create remaining directories
         mkdir -p AppDir/usr/share/applications \
                  AppDir/usr/share/icons/hicolor/256x256/apps
 
-        # launcher script (lanza Python http server)
+        # ---------- launcher script (AppDir/bin/vault) ----------
         cat > AppDir/bin/vault <<'SCRIPT'
-        #!/usr/bin/env bash
-        HERE="$(dirname "$(readlink -f "$0")")"
-        export VAULT_WEB_PATH="${HERE}/../web"
-        if command -v python3 >/dev/null; then
-          cd "$VAULT_WEB_PATH"
-          python3 -m http.server 8080 --bind 127.0.0.1 &
-          SERVER=$!
-          xdg-open "http://127.0.0.1:8080" || echo "Open http://127.0.0.1:8080"
-          wait $SERVER
-        else
-          echo "Python3 not found"
-          exit 1
-        fi
-        SCRIPT
+#!/usr/bin/env bash
+HERE="$(dirname "$(readlink -f "$0")")"
+export VAULT_WEB_PATH="${HERE}/../web"
+
+# start a simple HTTP server
+if command -v python3 >/dev/null; then
+  cd "$VAULT_WEB_PATH"
+  python3 -m http.server 8080 --bind 127.0.0.1 &
+  SERVER=$!
+  # open browser (best‑effort)
+  xdg-open "http://127.0.0.1:8080" 2>/dev/null || echo "Open http://127.0.0.1:8080 manually"
+  wait $SERVER
+else
+  echo "Python3 not available – cannot serve UI"
+  exit 1
+fi
+SCRIPT
         chmod +x AppDir/bin/vault
 
-        # desktop entry
+        # ---------- desktop entry ----------
         cat > AppDir/usr/share/applications/net.koofr.vault.desktop <<'DESKTOP'
-        [Desktop Entry]
-        Type=Application
-        Name=Koofr Vault
-        Comment=Client‑side encrypted folder for Koofr
-        Exec=bin/vault
-        Icon=net.koofr.vault
-        Categories=Utility;
-        DESKTOP
+[Desktop Entry]
+Type=Application
+Name=Koofr Vault
+Comment=Client‑side encrypted folder for Koofr
+Exec=bin/vault
+Icon=net.koofr.vault
+Categories=Utility;
+DESKTOP
 
-        # AppRun (wrapper)
+        # ---------- AppRun (wrapper) ----------
         cat > AppDir/AppRun <<'APPRUN'
-        #!/bin/sh
-        HERE="$(dirname "$(readlink -f "$0")")"
-        exec "${HERE}/bin/vault" "$@"
-        APPRUN
+#!/bin/sh
+HERE="$(dirname "$(readlink -f "$0")")"
+exec "${HERE}/bin/vault" "$@"
+APPRUN
         chmod +x AppDir/AppRun
 
-        # icon (fallback if missing)
+        # ---------- icon (fallback if missing) ----------
         wget -O AppDir/usr/share/icons/hicolor/256x256/apps/net.koofr.vault.png \
           https://raw.githubusercontent.com/koofr/vault/main/vault-web/public/favicon.ico \
-          || echo "Icon not found – using placeholder"
+          || echo "⚠️ Icon not found – using placeholder"
 
-        # build AppImage
+        # ---------- build the AppImage ----------
         appimage-builder --recipe AppImageBuilder.yml
 
+    # ------------------------------------------------------------------
+    # 6️⃣ Publicar artefactos y release
+    # ------------------------------------------------------------------
     - name: Upload AppImage
       uses: actions/upload-artifact@v4
       with:
