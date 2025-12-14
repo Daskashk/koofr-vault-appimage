@@ -23,29 +23,42 @@ jobs:
           submodules: recursive
           path: ./koofr-source
 
-      # 3. Construir la web desde el código fuente oficial
+      # 3. Construir web desde código fuente y extraer CORRECTAMENTE
       - name: Construir web desde código fuente
         run: |
           cd ./koofr-source
-          # Método oficial de construcción que SÍ funciona
           docker build --build-arg GIT_REVISION=$(git rev-parse --short HEAD) \
                        --target static-stage -t vault-static .
           docker run --rm vault-static cat vault-web.tar.gz > ../vault-web.tar.gz
 
-          # Extraer archivos web
+          # Extraer y VER la estructura REAL del tar.gz
           cd ..
-          tar -xzf vault-web.tar.gz
-          echo "✅ Archivos web construidos:"
-          ls -la vault-web/dist/
+          echo "=== ESTRUCTURA DEL TAR.GZ ==="
+          tar -tzf vault-web.tar.gz | head -20
+          echo "=== FIN DE LISTA ==="
 
-      # 4. Preparar configuración de Tauri
+          # Extraer TODO el contenido
+          tar -xzf vault-web.tar.gz
+
+          # Ver qué se extrajo realmente
+          echo "=== CONTENIDO EXTRAÍDO ==="
+          ls -la
+          echo "=== ¿Existe vault-web/? ==="
+          ls -la vault-web/ 2>/dev/null || echo "No existe carpeta vault-web/"
+
+          # Crear la estructura que Tauri espera
+          mkdir -p ./web-files
+          # Mover TODO lo extraído a web-files (incluyendo index.html, assets/, etc.)
+          mv *.html *.txt *.json assets/ streamsaver*/ ./web-files/ 2>/dev/null || true
+
+      # 4. Preparar configuración de Tauri con la estructura REAL
       - name: Configurar Tauri con archivos web
         run: |
-          # Copiar los archivos web construidos a donde Tauri los espera
-          mkdir -p ./appimage-config/tauri-app/web-dist
-          cp -r vault-web/dist/* ./appimage-config/tauri-app/web-dist/
+          # Copiar los archivos web REALES
+          mkdir -p ./appimage-config/tauri-app/src-tauri
+          cp -r ./web-files ./appimage-config/tauri-app/web-dist
 
-          # Actualizar configuración de Tauri para usar estos archivos
+          # Crear configuración de Tauri que apunta a web-dist/
           cat > ./appimage-config/tauri-app/src-tauri/tauri.conf.json << 'EOF'
           {
             "productName": "Koofr Vault",
@@ -75,6 +88,9 @@ jobs:
             }
           }
           EOF
+
+          echo "✅ Estructura preparada:"
+          ls -la ./appimage-config/tauri-app/web-dist/
 
       # 5. Dependencias para Tauri
       - name: Instalar dependencias sistema
