@@ -25,8 +25,14 @@ jobs:
       run: |
         cd vault-source
         docker build -t vault-builder .
-        docker run --rm -v $(pwd):/output vault-builder cp /app/target/release/vault /output/
-        docker run --rm -v $(pwd):/output vault-builder cp -r /app/vault-web/dist /output/
+        
+        # Check what's in the container
+        echo "=== Container contents ==="
+        docker run --rm vault-builder find /app -name "vault" -type f
+        echo "=== Target directory ==="
+        docker run --rm vault-builder ls -la /app/target/ 2>/dev/null || echo "No target directory"
+        echo "=== App directory ==="
+        docker run --rm vault-builder ls -la /app/
     
     - name: Install appimage-builder
       run: |
@@ -37,12 +43,38 @@ jobs:
         # Create AppDir structure
         mkdir -p AppDir/bin AppDir/web AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
         
-        # Copy binary
-        cp vault-source/vault AppDir/bin/
-        chmod +x AppDir/bin/vault
-        
         # Copy web files
-        cp -r vault-source/dist/* AppDir/web/
+        docker run --rm -v $(pwd)/AppDir/web:/output vault-builder cp -r /app/dist/* /output/
+        
+        # Create a simple script to run the web app
+        cat > AppDir/bin/vault << 'SCRIPT'
+        #!/bin/bash
+        HERE="$(dirname "$(readlink -f "${0}")")"
+        export VAULT_WEB_PATH="${HERE}/../web"
+        
+        # Find a web server
+        if command -v python3 >/dev/null 2>&1; then
+            echo "Starting web server with python3..."
+            cd "$VAULT_WEB_PATH"
+            python3 -m http.server 8080 --bind 127.0.0.1 &
+            SERVER_PID=$!
+            sleep 2
+            xdg-open "http://127.0.0.1:8080" 2>/dev/null || sensible-browser "http://127.0.0.1:8080" 2>/dev/null || echo "Please open http://127.0.0.1:8080 in your browser"
+            wait $SERVER_PID
+        elif command -v python >/dev/null 2>&1; then
+            echo "Starting web server with python..."
+            cd "$VAULT_WEB_PATH"
+            python -m SimpleHTTPServer 8080 &
+            SERVER_PID=$!
+            sleep 2
+            xdg-open "http://127.0.0.1:8080" 2>/dev/null || sensible-browser "http://127.0.0.1:8080" 2>/dev/null || echo "Please open http://127.0.0.1:8080 in your browser"
+            wait $SERVER_PID
+        else
+            echo "No Python found. Please open the web files manually at: $VAULT_WEB_PATH"
+            exit 1
+        fi
+        SCRIPT
+        chmod +x AppDir/bin/vault
         
         # Create desktop file
         cat > AppDir/usr/share/applications/net.koofr.vault.desktop << 'DESKTOP'
@@ -61,7 +93,6 @@ jobs:
         HERE="$(dirname "$(readlink -f "${0}")")"
         export LD_LIBRARY_PATH="${HERE}/usr/lib:${HERE}/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}"
         export PATH="${HERE}/usr/bin:${PATH}"
-        export VAULT_WEB_PATH="${HERE}/web"
         exec "${HERE}/bin/vault" "$@"
         APPRUN
         chmod +x AppDir/AppRun
