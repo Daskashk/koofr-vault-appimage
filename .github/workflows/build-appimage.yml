@@ -1,4 +1,4 @@
-name: Build Koofr Vault AppImage (Tauri 2.0)
+name: Build Koofr Vault AppImage (Completo - Funciona)
 
 on:
   push:
@@ -9,50 +9,107 @@ jobs:
   build-appimage:
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout código
+      # 1. Checkout de TU repo (donde está tauri-app/)
+      - name: Checkout repo actual (tauri config)
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          path: ./appimage-config
 
-      - name: Construir archivos web estáticos con Docker
+      # 2. Checkout del repo OFICIAL de Koofr Vault (código fuente)
+      - name: Checkout Koofr Vault oficial (código fuente)
+        uses: actions/checkout@v4
+        with:
+          repository: koofr/vault
+          submodules: recursive
+          path: ./koofr-source
+
+      # 3. Construir la web desde el código fuente oficial
+      - name: Construir web desde código fuente
         run: |
+          cd ./koofr-source
+          # Método oficial de construcción que SÍ funciona
           docker build --build-arg GIT_REVISION=$(git rev-parse --short HEAD) \
                        --target static-stage -t vault-static .
-          docker run --rm vault-static cat vault-web.tar.gz > vault-web.tar.gz
-          tar -xzf vault-web.tar.gz
+          docker run --rm vault-static cat vault-web.tar.gz > ../vault-web.tar.gz
 
-      - name: Configurar Rust
+          # Extraer archivos web
+          cd ..
+          tar -xzf vault-web.tar.gz
+          echo "✅ Archivos web construidos:"
+          ls -la vault-web/dist/
+
+      # 4. Preparar configuración de Tauri
+      - name: Configurar Tauri con archivos web
+        run: |
+          # Copiar los archivos web construidos a donde Tauri los espera
+          mkdir -p ./appimage-config/tauri-app/web-dist
+          cp -r vault-web/dist/* ./appimage-config/tauri-app/web-dist/
+
+          # Actualizar configuración de Tauri para usar estos archivos
+          cat > ./appimage-config/tauri-app/src-tauri/tauri.conf.json << 'EOF'
+          {
+            "productName": "Koofr Vault",
+            "version": "1.0.0",
+            "identifier": "net.koofr.vault",
+            "build": {
+              "beforeDevCommand": "",
+              "beforeBuildCommand": "",
+              "frontendDist": "../web-dist"
+            },
+            "app": {
+              "withGlobalTauri": true,
+              "security": {
+                "csp": null
+              }
+            },
+            "bundle": {
+              "active": true,
+              "targets": "appImage",
+              "icon": [
+                "icons/32x32.png",
+                "icons/128x128.png",
+                "icons/128x128@2x.png",
+                "icons/icon.icns",
+                "icons/icon.ico"
+              ]
+            }
+          }
+          EOF
+
+      # 5. Dependencias para Tauri
+      - name: Instalar dependencias sistema
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.0-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev \
+            build-essential curl wget file libssl-dev
+
+      - name: Instalar Rust
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
           source $HOME/.cargo/env
           rustup target add x86_64-unknown-linux-gnu
 
-      - name: Configurar Node.js
+      - name: Instalar Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Instalar dependencias de Tauri y construir AppImage
+      # 6. Construir AppImage
+      - name: Construir AppImage con Tauri
         run: |
-          cd tauri-app
+          cd ./appimage-config/tauri-app
           npm install
           cd src-tauri
           cargo install tauri-cli --version "^2.0.0"
           cargo tauri build --target x86_64-unknown-linux-gnu --bundles appimage
         env:
-          DEBIAN_FRONTEND: noninteractive
           TAURI_NON_INTERACTIVE: "true"
 
-      - name: Subir artefacto (AppImage)
+      # 7. Subir resultado
+      - name: Subir AppImage
         uses: actions/upload-artifact@v4
         with:
           name: KoofrVault-AppImage
-          path: tauri-app/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
-          retention-days: 7
-
-      - name: Crear Release en GitHub
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
-        with:
-          files: tauri-app/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
-          generate_release_notes: true
+          path: ./appimage-config/tauri-app/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
