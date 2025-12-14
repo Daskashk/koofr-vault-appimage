@@ -1,6 +1,6 @@
 name: Build AppImage
 
-on:
+on: 
   push:
     tags:
       - 'v*'
@@ -8,7 +8,9 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on:  ubuntu-22.04
+    permissions:
+      contents: write
 
     steps:
     - name: Checkout this repo
@@ -21,46 +23,94 @@ jobs:
         path: vault-source
         submodules: recursive
 
-    - name: Build Docker image
+    - name: Setup build environment
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y python3-pip fuse libfuse2 wget xdg-utils
+        pip install appimage-builder
+
+    - name:  Build Docker image
       run: |
         cd vault-source
-        docker build -t vault-builder .
+        docker build -t vault-builder . 
 
     - name: Extract UI from container
       run: |
         docker create --name vault_tmp vault-builder
         mkdir -p AppDir/bin AppDir/web
-        docker cp vault_tmp:/app/dist/. AppDir/web/ 2>/dev/null ||
-        docker cp vault_tmp:/app/vault-web/dist/. AppDir/web/ 2>/dev/null ||
-        { echo "UI not found in container"; exit 1; }
-        echo "UI files copied:"
-        ls -1 AppDir/web | head
+        
+        # Intentar extraer desde múltiples ubicaciones posibles
+        if docker cp vault_tmp:/app/dist/.  AppDir/web/ 2>/dev/null; then
+          echo "✓ UI extraído desde /app/dist"
+        elif docker cp vault_tmp:/app/vault-web/dist/. AppDir/web/ 2>/dev/null; then
+          echo "✓ UI extraído desde /app/vault-web/dist"
+        else
+          echo "✗ Error:  No se pudo encontrar los archivos de UI en el contenedor"
+          docker rm vault_tmp || true
+          exit 1
+        fi
+        
+        echo "📁 Archivos de UI:"
+        ls -lh AppDir/web | head -10
         docker rm vault_tmp
 
-    - name: Install appimage-builder
-      run: pip install appimage-builder
-
     - name: Create AppDir structure
-      run: mkdir -p AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
+      run: |
+        mkdir -p AppDir/usr/share/applications
+        mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+        chmod 755 AppDir
 
-    - name: Create vault script
+    - name: Create vault launcher script
       run: |
         cat > AppDir/bin/vault << 'SCRIPT'
-#!/usr/bin/env bash
-HERE="$(dirname "$(readlink -f "$0")")"
-export VAULT_WEB_PATH="${HERE}/../web"
-if command -v python3 >/dev/null; then
-  cd "$VAULT_WEB_PATH"
-  python3 -m http.server 8080 --bind 127.0.0.1 &
-  SERVER=$!
-  xdg-open "http://127.0.0.1:8080" 2>/dev/null || echo "Open http://127.0.0.1:8080 manually"
-  wait $SERVER
-else
-  echo "Python3 not available"
-  exit 1
+#!/bin/bash
+set -e
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WEB_PATH="${HERE}/../web"
+PORT=8080
+BIND_ADDR="127.0.0.1"
+
+# Validar que existen los archivos
+if [ ! -d "$WEB_PATH" ] || [ -z "$(ls -A "$WEB_PATH")" ]; then
+    echo "Error:  Archivos de UI no encontrados en $WEB_PATH"
+    exit 1
 fi
+
+# Verificar Python3
+if ! command -v python3 &> /dev/null; then
+    echo "Error: Python3 no disponible"
+    exit 1
+fi
+
+# Iniciar servidor HTTP en background
+cd "$WEB_PATH"
+echo "🚀 Iniciando servidor de Koofr Vault en http://$BIND_ADDR:$PORT"
+python3 -m http.server $PORT --bind $BIND_ADDR > /dev/null 2>&1 &
+SERVER_PID=$!
+
+# Trap para manejar señales
+cleanup() {
+    if kill -0 $SERVER_PID 2>/dev/null; then
+        kill $SERVER_PID 2>/dev/null || true
+    fi
+    exit 0
+}
+
+trap cleanup SIGINT SIGTERM EXIT
+
+# Intentar abrir en navegador
+if command -v xdg-open &> /dev/null; then
+    xdg-open "http://$BIND_ADDR:$PORT" 2>/dev/null &
+else
+    echo "💡 Abre tu navegador en: http://$BIND_ADDR:$PORT"
+fi
+
+# Mantener el servidor activo
+wait $SERVER_PID
 SCRIPT
         chmod +x AppDir/bin/vault
+        echo "✓ Script de lanzamiento creado"
 
     - name: Create desktop entry
       run: |
@@ -68,40 +118,104 @@ SCRIPT
 [Desktop Entry]
 Type=Application
 Name=Koofr Vault
-Comment=Client-side encrypted folder for Koofr
-Exec=bin/vault
-Icon=net.koofr.vault
-Categories=Utility;
+Comment=Cliente seguro del lado del cliente para Koofr
+Exec=vault
+Icon=net.koofr. vault
+Categories=Utility;Security;
+Keywords=encrypt;security;cloud;storage;
+Terminal=false
+StartupNotify=true
 DESKTOP
+        echo "✓ Desktop entry creado"
 
     - name: Create AppRun
       run: |
         cat > AppDir/AppRun << 'APPRUN'
 #!/bin/sh
-HERE="$(dirname "$(readlink -f "$0")")"
+HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+PATH="${HERE}/bin:$PATH"
+export PATH
+export VAULT_WEB_PATH="${HERE}/web"
 exec "${HERE}/bin/vault" "$@"
 APPRUN
         chmod +x AppDir/AppRun
+        echo "✓ AppRun creado"
 
-    - name: Download icon
+    - name: Download and convert icon
       run: |
-        wget -O AppDir/usr/share/icons/hicolor/256x256/apps/net.koofr.vault.png \
-          https://raw.githubusercontent.com/koofr/vault/main/vault-web/public/favicon.ico \
-          || echo "Icon not found"
+        mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+        
+        # Descargar el favicon
+        if wget -q -O /tmp/favicon.ico \
+          https://raw.githubusercontent.com/koofr/vault/main/vault-web/public/favicon.ico; then
+          
+          # Convertir ICO a PNG si es necesario
+          if command -v convert &> /dev/null; then
+            convert /tmp/favicon.ico AppDir/usr/share/icons/hicolor/256x256/apps/net.koofr.vault.png
+            echo "✓ Icono convertido de ICO a PNG"
+          else
+            echo "⚠ ImageMagick no disponible, usando wget con PNG directamente"
+            wget -q -O AppDir/usr/share/icons/hicolor/256x256/apps/net.koofr.vault.png \
+              https://raw.githubusercontent.com/koofr/vault/main/vault-web/public/favicon.png || \
+              echo "⚠ No se pudo descargar el icono PNG"
+          fi
+        else
+          echo "⚠ No se pudo descargar el favicon"
+        fi
+        
+        # Crear un icono genérico si no existe
+        if [ ! -f AppDir/usr/share/icons/hicolor/256x256/apps/net.koofr.vault.png ]; then
+          echo "⚠ Usando icono genérico como fallback"
+          convert -size 256x256 xc:blue -fill white -gravity center \
+            -pointsize 40 -annotate +0+0 "KV" \
+            AppDir/usr/share/icons/hicolor/256x256/apps/net. koofr.vault.png || true
+        fi
+
+    - name:  Verify AppDir structure
+      run: |
+        echo "📋 Estructura de AppDir:"
+        tree AppDir -L 3 || find AppDir -type f | head -20
+        
+        # Validaciones críticas
+        test -f AppDir/AppRun || { echo "✗ AppRun no existe"; exit 1; }
+        test -f AppDir/bin/vault || { echo "✗ bin/vault no existe"; exit 1; }
+        test -d AppDir/web || { echo "✗ Directorio web no existe"; exit 1; }
+        test -n "$(ls -A AppDir/web)" || { echo "✗ Directorio web está vacío"; exit 1; }
+        
+        echo "✓ Validaciones completadas"
 
     - name: Build AppImage
-      run: appimage-builder --recipe AppImageBuilder.yml
+      run: |
+        appimage-builder --recipe AppImageBuilder.yml --skip-test
+        
+        # Verificar que se creó el AppImage
+        if ls *.AppImage 2>/dev/null; then
+          echo "✓ AppImage construido exitosamente"
+          ls -lh *.AppImage*
+        else
+          echo "✗ Error: No se generó el AppImage"
+          exit 1
+        fi
 
-    - name: Upload AppImage
+    - name:  Upload artifacts
       uses: actions/upload-artifact@v4
+      if: always()
       with:
-        name: Koofr-Vault-AppImage
-        path: '*.AppImage*'
+        name: koofr-vault-appimage
+        path: |
+          *.AppImage
+          *.AppImage.zsync
+        retention-days: 30
 
-    - name: Release
-      uses: softprops/action-gh-release@v1
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
       if: startsWith(github.ref, 'refs/tags/')
       with:
-        files: '*.AppImage*'
+        files: |
+          *.AppImage
+          *.AppImage.zsync
+        draft: false
+        prerelease:  ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+        generate_release_notes: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
