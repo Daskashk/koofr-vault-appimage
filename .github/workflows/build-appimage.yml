@@ -40,10 +40,12 @@ jobs:
     - name: Install appimage-builder
       run: pip install appimage-builder
 
-    - name: Assemble AppImage
+    - name: Create AppDir structure
       run: |
         mkdir -p AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
 
+    - name: Create vault script
+      run: |
         cat > AppDir/bin/vault << 'SCRIPT'
 #!/usr/bin/env bash
 HERE="$(dirname "$(readlink -f "$0")")"
@@ -61,6 +63,8 @@ fi
 SCRIPT
         chmod +x AppDir/bin/vault
 
+    - name: Create desktop entry
+      run: |
         cat > AppDir/usr/share/applications/net.koofr.vault.desktop << 'DESKTOP'
 [Desktop Entry]
 Type=Application
@@ -71,6 +75,8 @@ Icon=net.koofr.vault
 Categories=Utility;
 DESKTOP
 
+    - name: Create AppRun
+      run: |
         cat > AppDir/AppRun << 'APPRUN'
 #!/bin/sh
 HERE="$(dirname "$(readlink -f "$0")")"
@@ -78,11 +84,14 @@ exec "${HERE}/bin/vault" "$@"
 APPRUN
         chmod +x AppDir/AppRun
 
+    - name: Download icon
+      run: |
         wget -O AppDir/usr/share/icons/hicolor/256x256/apps/net.koofr.vault.png \
           https://raw.githubusercontent.com/koofr/vault/main/vault-web/public/favicon.ico \
           || echo "Icon not found"
 
-        appimage-builder --recipe AppImageBuilder.yml
+    - name: Build AppImage
+      run: appimage-builder --recipe AppImageBuilder.yml
 
     - name: Upload AppImage
       uses: actions/upload-artifact@v4
