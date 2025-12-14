@@ -41,8 +41,7 @@ jobs:
       run: pip install appimage-builder
 
     - name: Create AppDir structure
-      run: |
-        mkdir -p AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
+      run: mkdir -p AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
 
     - name: Create vault script
       run: |
