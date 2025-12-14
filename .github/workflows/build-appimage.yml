@@ -1,0 +1,104 @@
+name: Build AppImage
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+    
+    - name: Install Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+    
+    - name: Cache cargo
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Build web app
+      run: |
+        cd vault-web
+        npm install
+        npm run build
+    
+    - name: Build native binary
+      run: |
+        cargo build --release
+    
+    - name: Install appimage-builder
+      run: |
+        pip install appimage-builder
+    
+    - name: Build AppImage
+      run: |
+        # Create AppDir structure
+        mkdir -p AppDir/bin AppDir/web AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
+        
+        # Copy binary
+        cp target/release/vault AppDir/bin/
+        chmod +x AppDir/bin/vault
+        
+        # Copy web files
+        cp -r vault-web/dist/* AppDir/web/
+        
+        # Create desktop file
+        cat > AppDir/usr/share/applications/net.koofr.vault.desktop << 'DESKTOP'
+        [Desktop Entry]
+        Type=Application
+        Name=Koofr Vault
+        Comment=Client-side encrypted folder for your Koofr cloud storage
+        Exec=bin/vault
+        Icon=net.koofr.vault
+        Categories=Office;Utility;
+        DESKTOP
+        
+        # Create AppRun
+        cat > AppDir/AppRun << 'APPRUN'
+        #!/bin/sh
+        HERE="$(dirname "$(readlink -f "${0}")")"
+        export LD_LIBRARY_PATH="${HERE}/usr/lib:${HERE}/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}"
+        export PATH="${HERE}/usr/bin:${PATH}"
+        export VAULT_WEB_PATH="${HERE}/web"
+        exec "${HERE}/bin/vault" "$@"
+        APPRUN
+        chmod +x AppDir/AppRun
+        
+        # Download icon
+        wget -O AppDir/usr/share/icons/hicolor/256x256/apps/net.koofr.vault.png https://raw.githubusercontent.com/koofr/vault/main/vault-web/public/icon.png
+        
+        # Build AppImage
+        appimage-builder --recipe AppImageBuilder.yml
+    
+    - name: Upload AppImage
+      uses: actions/upload-artifact@v3
+      with:
+        name: Koofr-Vault-AppImage
+        path: '*.AppImage*'
+    
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: '*.AppImage*'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,27 @@
+version: 1
+
+AppDir:
+  path: ./AppDir
+  
+  app_info:
+    id: net.koofr.vault
+    name: Koofr Vault
+    icon: net.koofr.vault
+    version: latest
+    exec: bin/vault
+    exec_args: $@
+  
+  files:
+    include:
+    - target/release/vault
+    - vault-web/dist/**
+    - vault-web/public/**
+    
+  runtime:
+    env:
+      VAULT_WEB_PATH: $APPDIR/web
+    
+AppImage:
+  arch: x86_64
+  update-information: gh-releases-zsync|Daskashk|koofr-vault-appimage|latest|*.AppImage.zsync
+  sign-key: None
