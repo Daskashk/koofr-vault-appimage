@@ -21,35 +21,12 @@ jobs:
         path: vault-source
         submodules: recursive
     
-    - name: Install Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        target: wasm32-wasi
-    
-    - name: Install Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-    
-    - name: Install wasm-pack
-      run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-    
-    - name: Build vault-wasm
-      run: |
-        cd vault-source/vault-wasm
-        wasm-pack build --target bundler --out-dir ../vault-web/src/vault-wasm
-    
-    - name: Build web app
-      run: |
-        cd vault-source/vault-web
-        npm install
-        npm run build
-    
-    - name: Build native binary
+    - name: Build with Docker
       run: |
         cd vault-source
-        cargo build --release
+        docker build -t vault-builder .
+        docker run --rm -v $(pwd):/output vault-builder cp /app/target/release/vault /output/
+        docker run --rm -v $(pwd):/output vault-builder cp -r /app/vault-web/dist /output/
     
     - name: Install appimage-builder
       run: |
@@ -61,11 +38,11 @@ jobs:
         mkdir -p AppDir/bin AppDir/web AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
         
         # Copy binary
-        cp vault-source/target/release/vault AppDir/bin/
+        cp vault-source/vault AppDir/bin/
         chmod +x AppDir/bin/vault
         
         # Copy web files
-        cp -r vault-source/vault-web/dist/* AppDir/web/
+        cp -r vault-source/dist/* AppDir/web/
         
         # Create desktop file
         cat > AppDir/usr/share/applications/net.koofr.vault.desktop << 'DESKTOP'
