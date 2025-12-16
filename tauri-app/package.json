@@ -1,8 +1,19 @@
+cat > tauri-app/package.json << 'EOF'
 {
-  "devDependencies": {
-    "@tauri-apps/cli": "^1.6.2" // Downgrade from "^2.0.0"
+  "name": "koofr-vault-desktop",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "tauri": "tauri"
   },
   "dependencies": {
-    "@tauri-apps/api": "^1.6.0" // Downgrade from "^2.0.0"
-  }
+    "@tauri-apps/api": "1.6.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "1.6.2"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }
+EOF

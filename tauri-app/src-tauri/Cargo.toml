@@ -1,5 +1,12 @@
+cat > tauri-app/src-tauri/Cargo.toml << 'EOF'
+[package]
+name = "koofr-vault-desktop"
+version = "1.0.0"
+edition = "2021"
+
 [dependencies]
-tauri = { version = "1.8.0", features = ["shell-open"] } # Downgrade from "2.0.0"
-# Also ensure tauri-build uses a compatible 1.x version
+tauri = { version = "1.8.0", features = ["shell-open"] }
+
 [build-dependencies]
-tauri-build = { version = "1.5.0" }
+tauri-build = "1.5.0"
+EOF

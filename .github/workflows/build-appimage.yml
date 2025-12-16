@@ -89,11 +89,13 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Instalar Tauri (VERSIONES EXACTAS)
+      - name: Instalar Tauri (VERSION 1.x para Ubuntu 22.04)
         run: |
           cd tauri-app
-          npm init -y
-          npm install @tauri-apps/cli@2.0.0 @tauri-apps/api@2.0.0
+          # Asegurarse de que package.json existe y es válido
+          cat package.json
+          # Instalar las versiones CORRECTAS 1.x
+          npm install @tauri-apps/cli@1.6.2 @tauri-apps/api@1.6.0
 
       - name: Construir AppImage
         run: |

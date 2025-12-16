@@ -1,3 +1,4 @@
+cat > tauri-app/src-tauri/src/main.rs << 'EOF'
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
@@ -5,3 +6,4 @@ fn main() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+EOF
