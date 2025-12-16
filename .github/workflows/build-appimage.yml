@@ -35,8 +35,12 @@ jobs:
           mkdir -p tauri-app/src-tauri/icons
           cp koofr-source/vault-desktop/src-tauri/icons/* tauri-app/src-tauri/icons/
 
-          # Corregir Cargo.toml: Eliminar la feature 'shell-open' que ya no existe en Tauri 2.0
-          sed -i 's/features = \["shell-open"\]//' tauri-app/src-tauri/Cargo.toml
+          # CORRECCIÓN: Elimina la coma Y la feature 'shell-open'
+          sed -i 's/, features = \["shell-open"\]//' tauri-app/src-tauri/Cargo.toml
+
+          # Verifica que la línea quedó correcta
+          echo "✅ Línea corregida en Cargo.toml:"
+          grep "tauri =" tauri-app/src-tauri/Cargo.toml
 
           echo '{' > tauri-app/src-tauri/tauri.conf.json
           echo '  "productName": "Koofr Vault",' >> tauri-app/src-tauri/tauri.conf.json
