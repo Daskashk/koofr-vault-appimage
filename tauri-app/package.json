@@ -1,14 +1,8 @@
 {
-  "name": "koofr-vault-desktop",
-  "version": "1.0.0",
-  "main": "index.js",
-  "scripts": {
-    "tauri": "tauri"
+  "devDependencies": {
+    "@tauri-apps/cli": "^1.6.2" // Downgrade from "^2.0.0"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.0.0"
-  },
-  "devDependencies": {
-    "@tauri-apps/cli": "^2.0.0"
+    "@tauri-apps/api": "^1.6.0" // Downgrade from "^2.0.0"
   }
 }
