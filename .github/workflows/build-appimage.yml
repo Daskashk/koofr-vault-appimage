@@ -82,10 +82,8 @@ jobs:
       - name: Construir AppImage
         run: |
           cd tauri-app
-          npm init -y
-          npm install @tauri-apps/cli
-          cd src-tauri
-          cargo tauri build --bundles appimage
+          # Usar npx para ejecutar el CLI, ya instalado en 'npm install'
+          npx tauri build --bundles appimage
         env:
           TAURI_NON_INTERACTIVE: "true"
 
