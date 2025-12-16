@@ -19,24 +19,33 @@ jobs:
           submodules: recursive
           path: koofr-source
 
+      - name: Cache Docker layers
+        uses: actions/cache@v3
+        with:
+          path: /tmp/.buildx-cache
+          key: docker-${{ hashFiles('koofr-source/Dockerfile') }}
+          restore-keys: docker-
+
       - name: Construir web oficial
         run: |
           cd koofr-source
-          docker build --build-arg GIT_REVISION=$(git rev-parse --short HEAD) --target static-stage -t vault-static .
+          DOCKER_BUILDKIT=1 docker build \
+            --build-arg GIT_REVISION=$(git rev-parse --short HEAD) \
+            --target static-stage \
+            -t vault-static .
           docker run --rm vault-static cat vault-web.tar.gz > ../vault-web.tar.gz
           cd ..
           tar -xzf vault-web.tar.gz
-          echo "Archivos extraídos:"
-          ls -la
+          echo "✅ Archivos web listos"
 
       - name: Preparar Tauri
         run: |
           mkdir -p tauri-app/web-dist
           mv index.html gitrevision.txt config.json assets/ streamsaver*/ tauri-app/web-dist/ 2>/dev/null || true
-
+          
           mkdir -p tauri-app/src-tauri/icons
           cp koofr-source/vault-desktop/src-tauri/icons/* tauri-app/src-tauri/icons/
-
+          
           echo '{' > tauri-app/src-tauri/tauri.conf.json
           echo '  "productName": "Koofr Vault",' >> tauri-app/src-tauri/tauri.conf.json
           echo '  "version": "1.0.0",' >> tauri-app/src-tauri/tauri.conf.json
@@ -61,9 +70,8 @@ jobs:
           echo '    ]' >> tauri-app/src-tauri/tauri.conf.json
           echo '  }' >> tauri-app/src-tauri/tauri.conf.json
           echo '}' >> tauri-app/src-tauri/tauri.conf.json
-          echo "✅ Configuración de Tauri creada"
 
-      - name: Instalar dependencias
+      - name: Instalar dependencias del sistema
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.0-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
@@ -79,10 +87,15 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Instalar dependencias de Tauri
+        run: |
+          cd tauri-app
+          npm init -y
+          npm install @tauri-apps/cli
+
       - name: Construir AppImage
         run: |
           cd tauri-app
-          # Usar npx para ejecutar el CLI, ya instalado en 'npm install'
           npx tauri build --bundles appimage
         env:
           TAURI_NON_INTERACTIVE: "true"
