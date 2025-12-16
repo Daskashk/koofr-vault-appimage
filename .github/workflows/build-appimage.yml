@@ -19,7 +19,7 @@ jobs:
           submodules: recursive
           path: koofr-source
 
-      - name: Construir web oficial (SIN caché)
+      - name: Construir web oficial
         run: |
           cd koofr-source
           docker build --build-arg GIT_REVISION=$(git rev-parse --short HEAD) --target static-stage -t vault-static .
@@ -34,6 +34,9 @@ jobs:
 
           mkdir -p tauri-app/src-tauri/icons
           cp koofr-source/vault-desktop/src-tauri/icons/* tauri-app/src-tauri/icons/
+
+          # Corregir Cargo.toml: Eliminar la feature 'shell-open' que ya no existe en Tauri 2.0
+          sed -i 's/features = \["shell-open"\]//' tauri-app/src-tauri/Cargo.toml
 
           echo '{' > tauri-app/src-tauri/tauri.conf.json
           echo '  "productName": "Koofr Vault",' >> tauri-app/src-tauri/tauri.conf.json
