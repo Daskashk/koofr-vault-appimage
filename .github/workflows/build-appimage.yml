@@ -1,4 +1,4 @@
-name: Build Koofr Vault AppImage (Optimizado)
+name: Build Koofr Vault AppImage
 
 on:
   push:
@@ -19,29 +19,13 @@ jobs:
           submodules: recursive
           path: koofr-source
 
-      # 1. CACHÉ DOCKER (CRÍTICO para velocidad)
-      - name: Cache Docker layers
-        uses: actions/cache@v3
-        with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-docker-${{ hashFiles('koofr-source/Dockerfile', 'koofr-source/**/Cargo.toml', 'koofr-source/**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-docker-
-
-      - name: Construir web oficial (con caché)
+      - name: Construir web oficial (SIN caché)
         run: |
           cd koofr-source
-          # Usa BuildKit con caché para acelerar enormemente
-          DOCKER_BUILDKIT=1 docker build \
-            --build-arg GIT_REVISION=$(git rev-parse --short HEAD) \
-            --target static-stage \
-            --cache-from type=local,src=/tmp/.buildx-cache \
-            --cache-to type=local,dest=/tmp/.buildx-cache,mode=max \
-            -t vault-static .
+          docker build --build-arg GIT_REVISION=$(git rev-parse --short HEAD) --target static-stage -t vault-static .
           docker run --rm vault-static cat vault-web.tar.gz > ../vault-web.tar.gz
           cd ..
           tar -xzf vault-web.tar.gz
-          echo "✅ Archivos web listos"
 
       - name: Preparar Tauri
         run: |
@@ -51,7 +35,6 @@ jobs:
           mkdir -p tauri-app/src-tauri/icons
           cp koofr-source/vault-desktop/src-tauri/icons/* tauri-app/src-tauri/icons/
 
-          # Crear tauri.conf.json sin heredoc (método infalible)
           echo '{' > tauri-app/src-tauri/tauri.conf.json
           echo '  "productName": "Koofr Vault",' >> tauri-app/src-tauri/tauri.conf.json
           echo '  "version": "1.0.0",' >> tauri-app/src-tauri/tauri.conf.json
@@ -77,18 +60,6 @@ jobs:
           echo '  }' >> tauri-app/src-tauri/tauri.conf.json
           echo '}' >> tauri-app/src-tauri/tauri.conf.json
 
-      # 2. CACHÉ RUST (reduce tiempo de compilación de Tauri)
-      - name: Cache Rust dependencies
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            tauri-app/src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('tauri-app/src-tauri/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
       - name: Instalar dependencias del sistema
         run: |
           sudo apt-get update
@@ -105,22 +76,12 @@ jobs:
         with:
           node-version: '20'
 
-      # 3. CACHÉ NPM
-      - name: Cache npm dependencies
-        uses: actions/cache@v3
-        with:
-          path: tauri-app/node_modules
-          key: ${{ runner.os }}-npm-${{ hashFiles('tauri-app/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm-
-
-      - name: Instalar dependencias de Tauri
+      - name: Instalar Tauri (VERSIONES EXACTAS)
         run: |
           cd tauri-app
           npm init -y
           npm install @tauri-apps/cli@2.0.0 @tauri-apps/api@2.0.0
 
-      # 4. COMANDO CORREGIDO: npx tauri build (no cargo tauri)
       - name: Construir AppImage
         run: |
           cd tauri-app
