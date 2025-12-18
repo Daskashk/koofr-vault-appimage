@@ -38,6 +38,10 @@ jobs:
           # Crear tauri.conf.json COMPATIBLE con TAURI 1.x
           cat > tauri-app/src-tauri/tauri.conf.json << 'EOF'
           {
+            "package": {
+              "productName": "Koofr Vault",
+              "version": "1.0.0"
+            },
             "build": {
               "distDir": "../web-dist",
               "devPath": "http://localhost:8080",
@@ -49,8 +53,6 @@ jobs:
                 "active": true,
                 "targets": "appimage",
                 "identifier": "net.koofr.vault",
-                "productName": "Koofr Vault",
-                "version": "1.0.0",
                 "icon": [
                   "icons/32x32.png",
                   "icons/128x128.png",
