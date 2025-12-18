@@ -1,9 +1,10 @@
 name: Build Koofr Vault AppImage
 
+# 🎯 TRIGGERS: Se ejecuta MANUALMENTE o al crear un TAG (ej: v1.0.0)
 on:
+  workflow_dispatch:   # Permite ejecución manual desde la pestaña "Actions"
   push:
-    tags: ['v*']
-  workflow_dispatch:
+    tags: ['v*']       # Se activa automáticamente al subir un tag que empiece por 'v'
 
 jobs:
   build:
@@ -86,7 +87,6 @@ jobs:
             librsvg2-dev \
             libsoup-3.0-dev
 
-
       - name: Setup Rust
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
@@ -101,9 +101,6 @@ jobs:
       - name: Instalar Tauri (VERSION 1.x para Ubuntu 22.04)
         run: |
           cd tauri-app
-          # Asegurarse de que package.json existe y es válido
-          cat package.json
-          # Instalar las versiones CORRECTAS 1.x
           npm install @tauri-apps/cli@1.6.2 @tauri-apps/api@1.6.0
 
       - name: Construir AppImage
@@ -113,8 +110,34 @@ jobs:
         env:
           TAURI_NON_INTERACTIVE: "true"
 
-      - name: Subir AppImage
+      # 🔒 CORRECCIÓN DE PERMISOS (antes de subir)
+      - name: Asegurar permisos de ejecución del AppImage
+        run: |
+          chmod +x tauri-app/src-tauri/target/release/bundle/appimage/*.AppImage
+
+      - name: Subir AppImage como artefacto
         uses: actions/upload-artifact@v4
         with:
           name: KoofrVault-AppImage
           path: tauri-app/src-tauri/target/release/bundle/appimage/*.AppImage
+
+  # 🚀 NUEVO JOB: Crear Release automático en GitHub
+  release:
+    needs: build  # Depende del job 'build'
+    runs-on: ubuntu-latest
+    # ⚠️ PERMISO CRÍTICO para poder crear releases
+    permissions:
+      contents: write
+    steps:
+      - name: Descargar artefacto (AppImage)
+        uses: actions/download-artifact@v4
+        with:
+          name: KoofrVault-AppImage
+
+      - name: Crear Release en GitHub
+        # Esta acción crea un release oficial y adjunta el AppImage
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')  # Solo si se activó por un TAG
+        with:
+          files: Koofr_Vault*.AppImage
+          generate_release_notes: true
