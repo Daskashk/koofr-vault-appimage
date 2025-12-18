@@ -35,37 +35,45 @@ jobs:
           mkdir -p tauri-app/src-tauri/icons
           cp koofr-source/vault-desktop/src-tauri/icons/* tauri-app/src-tauri/icons/
 
-          # CORRECCIÓN: Elimina la coma Y la feature 'shell-open'
-          sed -i 's/, features = \["shell-open"\]//' tauri-app/src-tauri/Cargo.toml
-
-          # Verifica que la línea quedó correcta
-          echo "✅ Línea corregida en Cargo.toml:"
-          grep "tauri =" tauri-app/src-tauri/Cargo.toml
-
-          echo '{' > tauri-app/src-tauri/tauri.conf.json
-          echo '  "productName": "Koofr Vault",' >> tauri-app/src-tauri/tauri.conf.json
-          echo '  "version": "1.0.0",' >> tauri-app/src-tauri/tauri.conf.json
-          echo '  "identifier": "net.koofr.vault",' >> tauri-app/src-tauri/tauri.conf.json
-          echo '  "build": {' >> tauri-app/src-tauri/tauri.conf.json
-          echo '    "beforeDevCommand": "",' >> tauri-app/src-tauri/tauri.conf.json
-          echo '    "beforeBuildCommand": "",' >> tauri-app/src-tauri/tauri.conf.json
-          echo '    "frontendDist": "../web-dist"' >> tauri-app/src-tauri/tauri.conf.json
-          echo '  },' >> tauri-app/src-tauri/tauri.conf.json
-          echo '  "app": {' >> tauri-app/src-tauri/tauri.conf.json
-          echo '    "withGlobalTauri": true' >> tauri-app/src-tauri/tauri.conf.json
-          echo '  },' >> tauri-app/src-tauri/tauri.conf.json
-          echo '  "bundle": {' >> tauri-app/src-tauri/tauri.conf.json
-          echo '    "active": true,' >> tauri-app/src-tauri/tauri.conf.json
-          echo '    "targets": ["appimage"],' >> tauri-app/src-tauri/tauri.conf.json
-          echo '    "icon": [' >> tauri-app/src-tauri/tauri.conf.json
-          echo '      "icons/32x32.png",' >> tauri-app/src-tauri/tauri.conf.json
-          echo '      "icons/128x128.png",' >> tauri-app/src-tauri/tauri.conf.json
-          echo '      "icons/128x128@2x.png",' >> tauri-app/src-tauri/tauri.conf.json
-          echo '      "icons/icon.icns",' >> tauri-app/src-tauri/tauri.conf.json
-          echo '      "icons/icon.ico"' >> tauri-app/src-tauri/tauri.conf.json
-          echo '    ]' >> tauri-app/src-tauri/tauri.conf.json
-          echo '  }' >> tauri-app/src-tauri/tauri.conf.json
-          echo '}' >> tauri-app/src-tauri/tauri.conf.json
+          # Crear tauri.conf.json COMPATIBLE con TAURI 1.x
+          cat > tauri-app/src-tauri/tauri.conf.json << 'EOF'
+{
+  "package": {
+    "productName": "Koofr Vault",
+    "version": "1.0.0"
+  },
+  "build": {
+    "distDir": "../web-dist",
+    "devPath": "http://localhost:8080",
+    "beforeDevCommand": "",
+    "beforeBuildCommand": ""
+  },
+  "tauri": {
+    "bundle": {
+      "active": true,
+      "targets": "appimage",
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png",
+        "icons/icon.icns",
+        "icons/icon.ico"
+      ]
+    },
+    "allowlist": {
+      "all": true
+    },
+    "windows": [
+      {
+        "title": "Koofr Vault",
+        "width": 1280,
+        "height": 800
+      }
+    ]
+  }
+}
+EOF
+          echo "✅ Configuración de Tauri 1.x creada"
 
       - name: Instalar dependencias del sistema (CON libsoup-3.0)
         run: |
