@@ -8,3 +8,7 @@ tauri = { version = "1.8.0", features = ["shell-open", "custom-protocol"] }
 
 [build-dependencies]
 tauri-build = "1.5.0"
+
+[features]
+default = [ "custom-protocol" ]
+custom-protocol = [ "tauri/custom-protocol" ]
