@@ -1,10 +1,9 @@
-name: Build Koofr Vault AppImage
+name: Build and Release Koofr Vault AppImage
 
-# 🎯 TRIGGERS: Se ejecuta MANUALMENTE o al crear un TAG (ej: v1.0.0)
 on:
-  workflow_dispatch:   # Permite ejecución manual desde la pestaña "Actions"
+  workflow_dispatch:
   push:
-    tags: ['v*']       # Se activa automáticamente al subir un tag que empiece por 'v'
+    tags: ['v*']
 
 jobs:
   build:
@@ -36,7 +35,6 @@ jobs:
           mkdir -p tauri-app/src-tauri/icons
           cp koofr-source/vault-desktop/src-tauri/icons/* tauri-app/src-tauri/icons/
 
-          # Crear tauri.conf.json COMPATIBLE con TAURI 1.x
           cat > tauri-app/src-tauri/tauri.conf.json << 'EOF'
           {
             "package": {
@@ -75,9 +73,9 @@ jobs:
             }
           }
           EOF
-          echo "✅ Configuración de Tauri 1.x creada"
+          echo "✅ Configuración creada"
 
-      - name: Instalar dependencias del sistema (CON libsoup-3.0)
+      - name: Instalar dependencias del sistema
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -98,7 +96,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Instalar Tauri (VERSION 1.x para Ubuntu 22.04)
+      - name: Instalar Tauri (VERSION 1.x)
         run: |
           cd tauri-app
           npm install @tauri-apps/cli@1.6.2 @tauri-apps/api@1.6.0
@@ -110,34 +108,39 @@ jobs:
         env:
           TAURI_NON_INTERACTIVE: "true"
 
-      # 🔒 CORRECCIÓN DE PERMISOS (antes de subir)
-      - name: Asegurar permisos de ejecución del AppImage
+      - name: Verificar y Asegurar permisos del AppImage
         run: |
-          chmod +x tauri-app/src-tauri/target/release/bundle/appimage/*.AppImage
+          APPIMAGE_PATH=$(find tauri-app/src-tauri/target/release/bundle/appimage -name "*.AppImage" 2>/dev/null | head -1)
+          if [ -z "$APPIMAGE_PATH" ]; then
+            echo "❌ ERROR: No se encontró ningún archivo .AppImage"
+            exit 1
+          else
+            echo "✅ AppImage encontrado en: $APPIMAGE_PATH"
+            chmod +x "$APPIMAGE_PATH"
+            ls -la "$APPIMAGE_PATH"
+          fi
 
-      - name: Subir AppImage como artefacto
+      - name: Subir AppImage como artefacto (para debug)
         uses: actions/upload-artifact@v4
         with:
-          name: KoofrVault-AppImage
+          name: KoofrVault-AppImage-DEBUG
           path: tauri-app/src-tauri/target/release/bundle/appimage/*.AppImage
+          retention-days: 1  # Solo lo guarda 1 día para ahorrar espacio
 
-  # 🚀 NUEVO JOB: Crear Release automático en GitHub
   release:
-    needs: build  # Depende del job 'build'
+    needs: build
     runs-on: ubuntu-latest
-    # ⚠️ PERMISO CRÍTICO para poder crear releases
     permissions:
       contents: write
     steps:
-      - name: Descargar artefacto (AppImage)
+      - name: Descargar artefacto del job build
         uses: actions/download-artifact@v4
         with:
-          name: KoofrVault-AppImage
+          name: KoofrVault-AppImage-DEBUG
 
-      - name: Crear Release en GitHub
-        # Esta acción crea un release oficial y adjunta el AppImage
+      - name: Crear Release oficial en GitHub
         uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')  # Solo si se activó por un TAG
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           files: Koofr_Vault*.AppImage
           generate_release_notes: true
