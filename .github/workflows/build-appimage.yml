@@ -4,8 +4,10 @@ on:
   workflow_dispatch:
   push:
     tags: ['v*']
-    permissions:
+
+permissions:
   contents: write
+
 
 jobs:
   build:
