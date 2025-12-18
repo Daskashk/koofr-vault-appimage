@@ -1,4 +1,3 @@
-cat > tauri-app/package.json << 'EOF'
 {
   "name": "koofr-vault-desktop",
   "version": "1.0.0",
@@ -16,4 +15,3 @@ cat > tauri-app/package.json << 'EOF'
   "author": "",
   "license": "ISC"
 }
-EOF
